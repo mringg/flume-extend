@@ -16,7 +16,6 @@
 package org.apache.flume.source.dirtail;
 
 import java.io.BufferedReader;
-import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
@@ -129,9 +128,13 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
     public void removeTask(String path) {
         if (runningMap.containsKey(path)) {
             logger.info("remove task " + path);
-            runningMap.get(path).getLeft().setRestart(false);
-            runningMap.get(path).getLeft().kill();
-            runningMap.get(path).getRight().cancel(true);
+            try {
+                runningMap.get(path).getLeft().setRestart(false);
+                runningMap.get(path).getLeft().kill();
+                runningMap.get(path).getRight().cancel(true);
+            } catch (Throwable e) {
+                logger.warn("removeTask Error", e);
+            }
             runningMap.remove(path);
         }
     }
@@ -251,15 +254,20 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
                     if (reader != null) {
                         try {
                             reader.close();
-                        } catch (IOException ex) {
+                        } catch (Throwable ex) {
                             logger.error("Failed to close reader for dir tail source", ex);
                         }
+                        try {
+                            kill();
+                        } catch (Throwable ex) {
+                            logger.error("Failed to kill for dir tail source", ex);
+                        }
                     }
-                    kill();
                 }
                 try {
                     Thread.sleep(restartThrottle);
                 } catch (InterruptedException e) {
+                    logger.error("Failed to restart for dir tail source", e);
                 }
             } while (restart);
         }
@@ -279,11 +287,10 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
             this.restart = restart;
         }
 
-        public int kill() {
+        public synchronized int kill() {
             if (process != null) {
                 synchronized (process) {
                     process.destroy();
-
                     try {
                         int exitValue = process.waitFor();
                         if (future != null) {
