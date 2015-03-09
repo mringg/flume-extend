@@ -136,6 +136,10 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
         }
     }
 
+    public boolean containTask(String path) {
+        return runningMap.containsKey(path);
+    }
+
     private static class ExecRunnable implements Runnable {
 
         public ExecRunnable(String path, boolean fromHead, ChannelProcessor channelProcessor, SourceCounter sourceCounter, int bufferCount, long batchTimeout, Charset charset,

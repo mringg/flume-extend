@@ -1,8 +1,5 @@
 package org.apache.flume.source.dirtail;
 
-import java.util.HashSet;
-import java.util.Set;
-
 import org.apache.commons.lang.Validate;
 import org.apache.commons.vfs2.FileChangeEvent;
 import org.apache.commons.vfs2.FileListener;
@@ -17,11 +14,10 @@ import org.slf4j.LoggerFactory;
 
 public class FileSystemMonitor {
 
-    private static final Logger logger   = LoggerFactory.getLogger(FileSystemMonitor.class);
+    private static final Logger logger = LoggerFactory.getLogger(FileSystemMonitor.class);
 
     private FileSystemManager   fsManager;
     private DefaultFileMonitor  fileMonitor;
-    private Set<String>         filesSet = new HashSet<String>();
 
     public FileSystemMonitor(final DirTailSource source, final DirPattern dirPattern) {
         try {
@@ -34,8 +30,7 @@ public class FileSystemMonitor {
             @Override
             public synchronized void fileDeleted(FileChangeEvent event) throws Exception {
                 String p = event.getFile().getName().getPath();
-                if (filesSet.contains(p)) {
-                    filesSet.remove(p);
+                if (source.containTask(p)) {
                     source.removeTask(p);
                 }
             }
@@ -72,8 +67,7 @@ public class FileSystemMonitor {
 
     public void addJob(FileChangeEvent event, DirPattern dirPattern, DirTailSource source, boolean isNew) {
         String p = event.getFile().getName().getPath();
-        if (!filesSet.contains(p) && dirPattern.isMatchFile(event)) {
-            filesSet.add(p);
+        if (!source.containTask(p) && dirPattern.isMatchFile(event)) {
             source.commitTask(p, event.getFile().getName().getBaseName(), isNew);
         }
     }
