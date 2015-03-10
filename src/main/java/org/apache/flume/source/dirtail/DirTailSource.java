@@ -270,7 +270,7 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
                 } catch (InterruptedException e) {
                     logger.error("Failed to restart for dir tail source", e);
                 }
-            } while (restart);
+            } while (restart && running);
             source.removeTaskKey(path);
         }
 
