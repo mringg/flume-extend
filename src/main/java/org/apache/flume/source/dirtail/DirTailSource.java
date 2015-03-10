@@ -16,6 +16,7 @@
 package org.apache.flume.source.dirtail;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
@@ -181,6 +182,7 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
         private boolean                splitFileName2Header;
         private volatile boolean       restart;
         private long                   restartThrottle;
+        private StderrReader           stderrReader;
 
         @Override
         public void run() {
@@ -206,6 +208,10 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
                     String[] commandArgs = command.split("\\s+");
                     process = new ProcessBuilder(commandArgs).start();
                     reader = new BufferedReader(new InputStreamReader(process.getInputStream(), charset));
+                    stderrReader = new StderrReader(new BufferedReader(new InputStreamReader(process.getErrorStream(), charset)));
+                    stderrReader.setName("StderrReader-[" + command + "]");
+                    stderrReader.setDaemon(true);
+                    stderrReader.start();
                     future = timedFlushService.scheduleWithFixedDelay(new Runnable() {
                         @Override
                         public void run() {
@@ -315,6 +321,35 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
                 return Integer.MIN_VALUE;
             }
             return Integer.MIN_VALUE / 2;
+        }
+    }
+    private static class StderrReader extends Thread {
+        private BufferedReader input;
+
+        protected StderrReader(BufferedReader input) {
+            this.input = input;
+        }
+
+        @Override
+        public void run() {
+            try {
+                int i = 0;
+                String line = null;
+                while ((line = input.readLine()) != null) {
+                    logger.info("StderrLogger[{}] = '{}'", ++i, line);
+
+                }
+            } catch (IOException e) {
+                logger.info("StderrLogger exiting", e);
+            } finally {
+                try {
+                    if (input != null) {
+                        input.close();
+                    }
+                } catch (IOException ex) {
+                    logger.error("Failed to close stderr reader for exec source", ex);
+                }
+            }
         }
     }
 }
