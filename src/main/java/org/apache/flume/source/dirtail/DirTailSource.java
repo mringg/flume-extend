@@ -16,7 +16,6 @@
 package org.apache.flume.source.dirtail;
 
 import java.io.BufferedReader;
-import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
@@ -122,21 +121,15 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
         logger.info("add task " + path);
         ExecRunnable runner =
                 new ExecRunnable(path, fromHead, getChannelProcessor(), sourceCounter, bufferCount, batchTimeout, charset, fileName, topicByFileName, splitFileName2Header,
-                        restart, restartThrottle);
+                        restart, restartThrottle, this);
         runningMap.put(path, new Pair<DirTailSource.ExecRunnable, Future<?>>(runner, executor.submit(runner)));
     }
 
     public void removeTask(String path) {
         if (runningMap.containsKey(path)) {
             logger.info("remove task " + path);
-            try {
-                runningMap.get(path).getLeft().setRestart(false);
-                runningMap.get(path).getLeft().kill();
-                runningMap.get(path).getRight().cancel(true);
-            } catch (Throwable e) {
-                logger.warn("removeTask Error", e);
-            }
-            runningMap.remove(path);
+            runningMap.get(path).getLeft().setRestart(false);
+            runningMap.get(path).getLeft().setRunning(false);
         }
     }
 
@@ -144,10 +137,14 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
         return runningMap.containsKey(path);
     }
 
+    public void removeTaskKey(String path) {
+        runningMap.remove(path);
+    }
+
     private static class ExecRunnable implements Runnable {
 
         public ExecRunnable(String path, boolean fromHead, ChannelProcessor channelProcessor, SourceCounter sourceCounter, int bufferCount, long batchTimeout, Charset charset,
-                String fileName, boolean topicByFileName, boolean splitFileName2Header, boolean restart, long restartThrottle) {
+                String fileName, boolean topicByFileName, boolean splitFileName2Header, boolean restart, long restartThrottle, DirTailSource source) {
             this.commandbasic = "tail -F -n ";
             this.channelProcessor = channelProcessor;
             this.sourceCounter = sourceCounter;
@@ -161,6 +158,7 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
             this.splitFileName2Header = splitFileName2Header;
             this.restart = restart;
             this.restartThrottle = restartThrottle;
+            this.source = source;
         }
 
         private final String           commandbasic;
@@ -181,8 +179,9 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
         private boolean                topicByFileName;
         private boolean                splitFileName2Header;
         private volatile boolean       restart;
+        private volatile boolean       running           = true;
         private long                   restartThrottle;
-        private StderrReader           stderrReader;
+        private DirTailSource          source;
 
         @Override
         public void run() {
@@ -208,10 +207,6 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
                     String[] commandArgs = command.split("\\s+");
                     process = new ProcessBuilder(commandArgs).start();
                     reader = new BufferedReader(new InputStreamReader(process.getInputStream(), charset));
-                    stderrReader = new StderrReader(new BufferedReader(new InputStreamReader(process.getErrorStream(), charset)));
-                    stderrReader.setName("StderrReader-[" + command + "]");
-                    stderrReader.setDaemon(true);
-                    stderrReader.start();
                     future = timedFlushService.scheduleWithFixedDelay(new Runnable() {
                         @Override
                         public void run() {
@@ -229,7 +224,7 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
                             }
                         }
                     }, batchTimeout, batchTimeout, TimeUnit.MILLISECONDS);
-                    while ((line = reader.readLine()) != null) {
+                    while ((line = reader.readLine()) != null && running) {
                         synchronized (eventList) {
                             sourceCounter.incrementEventReceivedCount();
                             Event et = EventBuilder.withBody(line.getBytes(charset));
@@ -276,6 +271,7 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
                     logger.error("Failed to restart for dir tail source", e);
                 }
             } while (restart);
+            source.removeTaskKey(path);
         }
 
         private void flushEventBatch(List<Event> eventList) {
@@ -291,6 +287,10 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
 
         public void setRestart(boolean restart) {
             this.restart = restart;
+        }
+
+        public void setRunning(boolean r) {
+            this.running = r;
         }
 
         public synchronized int kill() {
@@ -321,35 +321,6 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
                 return Integer.MIN_VALUE;
             }
             return Integer.MIN_VALUE / 2;
-        }
-    }
-    private static class StderrReader extends Thread {
-        private BufferedReader input;
-
-        protected StderrReader(BufferedReader input) {
-            this.input = input;
-        }
-
-        @Override
-        public void run() {
-            try {
-                int i = 0;
-                String line = null;
-                while ((line = input.readLine()) != null) {
-                    logger.info("StderrLogger[{}] = '{}'", ++i, line);
-
-                }
-            } catch (IOException e) {
-                logger.info("StderrLogger exiting", e);
-            } finally {
-                try {
-                    if (input != null) {
-                        input.close();
-                    }
-                } catch (IOException ex) {
-                    logger.error("Failed to close stderr reader for exec source", ex);
-                }
-            }
         }
     }
 }

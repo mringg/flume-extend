@@ -1,7 +1,5 @@
 package org.apache.flume.source.dirtail;
 
-import java.io.File;
-
 import org.apache.commons.lang.Validate;
 import org.apache.commons.vfs2.FileChangeEvent;
 import org.apache.commons.vfs2.FileListener;
@@ -32,11 +30,7 @@ public class FileSystemMonitor {
             @Override
             public synchronized void fileDeleted(FileChangeEvent event) throws Exception {
                 String p = event.getFile().getName().getPath();
-                Thread.sleep(5000);
-                File tfp = new File(p);
-                if (!tfp.exists() && source.containTask(p)) {
-                    source.removeTask(p);
-                }
+                source.removeTask(p);
             }
 
             @Override
