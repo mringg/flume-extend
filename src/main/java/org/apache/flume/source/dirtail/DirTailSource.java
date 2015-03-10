@@ -128,16 +128,22 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
     public void removeTask(String path) {
         if (runningMap.containsKey(path)) {
             logger.info("remove task " + path);
-            runningMap.get(path).getLeft().setRestart(false);
-            runningMap.get(path).getLeft().setRunning(false);
+            try {
+                runningMap.get(path).getLeft().setRestart(false);
+                runningMap.get(path).getLeft().kill();
+                runningMap.get(path).getRight().cancel(true);
+            } catch (Throwable e) {
+                logger.error("remove task exception", e);
+            }
         }
+        removeTaskKey(path);
     }
 
     public boolean containTask(String path) {
         return runningMap.containsKey(path);
     }
 
-    public void removeTaskKey(String path) {
+    public synchronized void removeTaskKey(String path) {
         runningMap.remove(path);
     }
 
@@ -179,7 +185,6 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
         private boolean                topicByFileName;
         private boolean                splitFileName2Header;
         private volatile boolean       restart;
-        private volatile boolean       running           = true;
         private long                   restartThrottle;
         private DirTailSource          source;
 
@@ -224,7 +229,7 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
                             }
                         }
                     }, batchTimeout, batchTimeout, TimeUnit.MILLISECONDS);
-                    while ((line = reader.readLine()) != null && running) {
+                    while ((line = reader.readLine()) != null) {
                         synchronized (eventList) {
                             sourceCounter.incrementEventReceivedCount();
                             Event et = EventBuilder.withBody(line.getBytes(charset));
@@ -266,11 +271,12 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
                     }
                 }
                 try {
-                    Thread.sleep(restartThrottle);
+                    if (restart)
+                        Thread.sleep(restartThrottle);
                 } catch (InterruptedException e) {
                     logger.error("Failed to restart for dir tail source", e);
                 }
-            } while (restart && running);
+            } while (restart);
             source.removeTaskKey(path);
         }
 
@@ -287,10 +293,6 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
 
         public void setRestart(boolean restart) {
             this.restart = restart;
-        }
-
-        public void setRunning(boolean r) {
-            this.running = r;
         }
 
         public synchronized int kill() {
