@@ -16,6 +16,7 @@
 package org.apache.flume.source.dirtail;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
@@ -29,6 +30,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.commons.lang.Validate;
 import org.apache.flume.Context;
 import org.apache.flume.Event;
 import org.apache.flume.EventDrivenSource;
@@ -69,7 +71,11 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
         sourceCounter.start();
         super.start();
         logger.debug("Dir tail source started");
-        fsm = new FileSystemMonitor(this, dirPattern);
+        try {
+            fsm = new FileSystemMonitor(this, dirPattern);
+        } catch (IOException e) {
+            Validate.isTrue(false, "fsm error");
+        }
         logger.info("DirTailSource init finished . ");
     }
 
