@@ -16,7 +16,7 @@ public class FileSystemMonitor {
 
             @Override
             public void fileDelete(Path path) {
-                source.removeTask(dirPattern.getPath() + "/" + path.getFileName().toString());
+                source.removeTask(buildP(dirPattern, path));
             }
 
             @Override
@@ -33,10 +33,13 @@ public class FileSystemMonitor {
     }
 
     public void addJob(Path path, DirPattern dirPattern, DirTailSource source, boolean isNew) {
-        String p = dirPattern.getPath() + "/" + path.getFileName().toString();
+        String p = buildP(dirPattern, path);
         if (!source.containTask(p) && dirPattern.isMatchFile(path)) {
             source.commitTask(p, path.getFileName().toString(), isNew);
         }
     }
 
+    public String buildP(DirPattern dirPattern, Path file) {
+        return dirPattern.getPath() + "/" + file.getFileName().toString();
+    }
 }
