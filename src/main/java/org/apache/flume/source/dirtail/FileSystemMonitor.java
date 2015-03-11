@@ -5,7 +5,7 @@ import java.nio.file.Path;
 
 public class FileSystemMonitor {
 
-    private FileMonitor         fileMonitor;
+    private FileMonitor fileMonitor;
 
     public FileSystemMonitor(final DirTailSource source, final DirPattern dirPattern) throws IOException {
         this.fileMonitor = new FileMonitor(dirPattern.getPath(), new FileMonitor.FileListener() {
@@ -16,7 +16,7 @@ public class FileSystemMonitor {
 
             @Override
             public void fileDelete(Path path) {
-                source.removeTask(path.toAbsolutePath().toString());
+                source.removeTask(dirPattern.getPath() + "/" + path.getFileName().toString());
             }
 
             @Override
@@ -33,8 +33,9 @@ public class FileSystemMonitor {
     }
 
     public void addJob(Path path, DirPattern dirPattern, DirTailSource source, boolean isNew) {
-        if (!source.containTask(path.toAbsolutePath().toString()) && dirPattern.isMatchFile(path)) {
-            source.commitTask(path.toAbsolutePath().toString(), path.getFileName().toString(), isNew);
+        String p = dirPattern.getPath() + "/" + path.getFileName().toString();
+        if (!source.containTask(p) && dirPattern.isMatchFile(path)) {
+            source.commitTask(p, path.getFileName().toString(), isNew);
         }
     }
 

@@ -19,6 +19,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.Charset;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -133,6 +134,13 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
 
     public void removeTask(String path) {
         if (runningMap.containsKey(path)) {
+            try {
+                Thread.sleep(5000);
+            } catch (InterruptedException e) {
+            }
+            if (Paths.get(path).toFile().exists()) {
+                return;
+            }
             logger.info("remove task " + path);
             try {
                 runningMap.get(path).getLeft().setRestart(false);
