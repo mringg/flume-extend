@@ -64,6 +64,7 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
     private boolean                                    splitFileName2Header = false;
     private boolean                                    restart;
     private long                                       restartThrottle;
+    private boolean                                    logStderr;
 
     @Override
     public void start() {
@@ -120,6 +121,7 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
         splitFileName2Header = context.getBoolean("splitFileName2Header", false);
         restart = context.getBoolean(ExecSourceConfigurationConstants.CONFIG_RESTART, ExecSourceConfigurationConstants.DEFAULT_RESTART);
         restartThrottle = context.getLong(ExecSourceConfigurationConstants.CONFIG_RESTART_THROTTLE, ExecSourceConfigurationConstants.DEFAULT_RESTART_THROTTLE);
+        logStderr = context.getBoolean(ExecSourceConfigurationConstants.CONFIG_LOG_STDERR, ExecSourceConfigurationConstants.DEFAULT_LOG_STDERR);
     }
 
     public void commitTask(String path, String fileName, boolean fromHead) {
@@ -128,7 +130,7 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
         logger.info("add task " + path);
         ExecRunnable runner =
                 new ExecRunnable(path, fromHead, getChannelProcessor(), sourceCounter, bufferCount, batchTimeout, charset, fileName, topicByFileName, splitFileName2Header,
-                        restart, restartThrottle, this);
+                        restart, restartThrottle, this, logStderr);
         runningMap.put(path, new Pair<DirTailSource.ExecRunnable, Future<?>>(runner, executor.submit(runner)));
     }
 
@@ -164,7 +166,7 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
     private static class ExecRunnable implements Runnable {
 
         public ExecRunnable(String path, boolean fromHead, ChannelProcessor channelProcessor, SourceCounter sourceCounter, int bufferCount, long batchTimeout, Charset charset,
-                String fileName, boolean topicByFileName, boolean splitFileName2Header, boolean restart, long restartThrottle, DirTailSource source) {
+                String fileName, boolean topicByFileName, boolean splitFileName2Header, boolean restart, long restartThrottle, DirTailSource source, boolean logStderr) {
             this.commandbasic = "tail -F -n ";
             this.channelProcessor = channelProcessor;
             this.sourceCounter = sourceCounter;
@@ -179,6 +181,7 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
             this.restart = restart;
             this.restartThrottle = restartThrottle;
             this.source = source;
+            this.logStderr = logStderr;
         }
 
         private final String           commandbasic;
@@ -201,6 +204,7 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
         private volatile boolean       restart;
         private long                   restartThrottle;
         private DirTailSource          source;
+        private boolean                logStderr;
 
         @Override
         public void run() {
@@ -226,6 +230,11 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
                     String[] commandArgs = command.split("\\s+");
                     process = new ProcessBuilder(commandArgs).start();
                     reader = new BufferedReader(new InputStreamReader(process.getInputStream(), charset));
+                    // StderrLogger dies as soon as the input stream is invalid
+                    StderrReader stderrReader = new StderrReader(new BufferedReader(new InputStreamReader(process.getErrorStream(), charset)), logStderr);
+                    stderrReader.setName("StderrReader-[" + command + "]");
+                    stderrReader.setDaemon(true);
+                    stderrReader.start();
                     future = timedFlushService.scheduleWithFixedDelay(new Runnable() {
                         @Override
                         public void run() {
@@ -337,6 +346,41 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
                 return Integer.MIN_VALUE;
             }
             return Integer.MIN_VALUE / 2;
+        }
+    }
+    private static class StderrReader extends Thread {
+        private BufferedReader input;
+        private boolean        logStderr;
+
+        protected StderrReader(BufferedReader input, boolean logStderr) {
+            this.input = input;
+            this.logStderr = logStderr;
+        }
+
+        @Override
+        public void run() {
+            try {
+                int i = 0;
+                String line = null;
+                while ((line = input.readLine()) != null) {
+                    if (logStderr) {
+                        // There is no need to read 'line' with a charset
+                        // as we do not to propagate it.
+                        // It is in UTF-16 and would be printed in UTF-8 format.
+                        logger.info("StderrLogger[{}] = '{}'", ++i, line);
+                    }
+                }
+            } catch (IOException e) {
+                logger.info("StderrLogger exiting", e);
+            } finally {
+                try {
+                    if (input != null) {
+                        input.close();
+                    }
+                } catch (IOException ex) {
+                    logger.error("Failed to close stderr reader for exec source", ex);
+                }
+            }
         }
     }
 }
