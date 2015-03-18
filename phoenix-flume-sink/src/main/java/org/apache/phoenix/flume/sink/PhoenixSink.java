@@ -134,7 +134,7 @@ public final class PhoenixSink extends AbstractSink implements Configurable {
         Channel channel = getChannel();
         Transaction transaction = null;
         List<Event> events = Lists.newArrayListWithExpectedSize(this.batchSize);
-        // long startTime = System.nanoTime();
+        long startTime = System.currentTimeMillis();
         try {
             transaction = channel.getTransaction();
             transaction.begin();
@@ -183,14 +183,11 @@ public final class PhoenixSink extends AbstractSink implements Configurable {
             logger.error("exception while processing in Phoenix Sink", e);
             throw new EventDeliveryException("Failed to persist message", e);
         } finally {
-            // logger.info(String.format("Time taken to process [%s] events was [%s] seconds",
-            // events.size(),
-            // TimeUnit.SECONDS.convert(System.nanoTime() - startTime, TimeUnit.NANOSECONDS)));
+            logger.info(getName() + " Time taken to process [" + events.size() + "] events was [" + (System.currentTimeMillis() - startTime) + "] seconds");
             if (transaction != null) {
                 transaction.close();
             }
         }
         return status;
     }
-
 }
