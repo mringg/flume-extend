@@ -25,6 +25,10 @@
     agent.sources.originallog.topicByFileName = false                        （default）
     agent.sources.originallog.restart = false                                （default）
     agent.sources.originallog.restartThrottle = 10000                        （default）
+    agent.sources.originallog.delay = 1000                                   （default）   探测文件变化的延迟
+    agent.sources.originallog.logStderr  = false                             （default）
+    agent.sources.originallog.splitFileName2Header  = false                  （default）   topic_type.log格式
+    
 
 # TopicInterceptor
 
