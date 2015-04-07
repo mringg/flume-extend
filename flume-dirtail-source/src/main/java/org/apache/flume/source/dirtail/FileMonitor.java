@@ -16,10 +16,10 @@ public class FileMonitor {
 
     private volatile boolean running = true;
 
-    public FileMonitor(final String path, final FileListener l) throws IOException {
-        this.monitor = new Thread(new Runnable() {
-            private WatchService watcher = FileSystems.getDefault().newWatchService();
+    private WatchService     watcher = FileSystems.getDefault().newWatchService();
 
+    public FileMonitor(final String path, final FileListener l, final long delay) throws IOException {
+        this.monitor = new Thread(new Runnable() {
             @Override
             public void run() {
                 Path p = Paths.get(path);
@@ -29,7 +29,7 @@ public class FileMonitor {
                 }
                 while (running) {
                     try {
-                        Thread.sleep(1000);
+                        Thread.sleep(delay);
                         WatchKey key = watcher.take();
                         for (WatchEvent<?> event : key.pollEvents()) {
                             @SuppressWarnings("unchecked")

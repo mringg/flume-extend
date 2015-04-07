@@ -7,7 +7,7 @@ public class FileSystemMonitor {
 
     private FileMonitor fileMonitor;
 
-    public FileSystemMonitor(final DirTailSource source, final DirPattern dirPattern) throws IOException {
+    public FileSystemMonitor(final DirTailSource source, final DirPattern dirPattern, final long delay) throws IOException {
         this.fileMonitor = new FileMonitor(dirPattern.getPath(), new FileMonitor.FileListener() {
             @Override
             public void fileCreate(Path path) {
@@ -24,7 +24,7 @@ public class FileSystemMonitor {
                 addJob(path, dirPattern, source, false);
             }
 
-        });
+        }, delay);
         fileMonitor.start();
     }
 

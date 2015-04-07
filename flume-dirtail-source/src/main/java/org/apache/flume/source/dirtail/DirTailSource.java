@@ -65,6 +65,7 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
     private boolean                                    restart;
     private long                                       restartThrottle;
     private boolean                                    logStderr;
+    private long                                       delay;
 
     @Override
     public void start() {
@@ -74,7 +75,7 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
         super.start();
         logger.debug("Dir tail source started");
         try {
-            fsm = new FileSystemMonitor(this, dirPattern);
+            fsm = new FileSystemMonitor(this, dirPattern, delay);
         } catch (IOException e) {
             Validate.isTrue(false, "fsm error");
         }
@@ -119,6 +120,7 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
         dirPattern.setFilePattern(context.getString("file-pattern", "^(.*)$"));
         topicByFileName = context.getBoolean("topicByFileName", false);
         splitFileName2Header = context.getBoolean("splitFileName2Header", false);
+        delay = context.getLong("delay", 1000L);
         restart = context.getBoolean(ExecSourceConfigurationConstants.CONFIG_RESTART, ExecSourceConfigurationConstants.DEFAULT_RESTART);
         restartThrottle = context.getLong(ExecSourceConfigurationConstants.CONFIG_RESTART_THROTTLE, ExecSourceConfigurationConstants.DEFAULT_RESTART_THROTTLE);
         logStderr = context.getBoolean(ExecSourceConfigurationConstants.CONFIG_LOG_STDERR, ExecSourceConfigurationConstants.DEFAULT_LOG_STDERR);
@@ -225,7 +227,7 @@ public class DirTailSource extends AbstractSource implements EventDrivenSource, 
                     Executors.newSingleThreadScheduledExecutor(new ThreadFactoryBuilder().setNameFormat("timedFlushExecService" + Thread.currentThread().getId() + "-%d").build());
             do {
                 try {
-                    command = commandbasic + (fromHead ? "+0 " : "0 ") + path;
+                    command = commandbasic + (fromHead ? "+0 " : "1 ") + path;
                     fromHead = false;
                     String[] commandArgs = command.split("\\s+");
                     process = new ProcessBuilder(commandArgs).start();
