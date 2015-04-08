@@ -1,19 +1,16 @@
 /**
- Licensed to the Apache Software Foundation (ASF) under one or more
- contributor license agreements.  See the NOTICE file distributed with
- this work for additional information regarding copyright ownership.
- The ASF licenses this file to You under the Apache License, Version 2.0
- (the "License"); you may not use this file except in compliance with
- the License.  You may obtain a copy of the License at
-
- http://www.apache.org/licenses/LICENSE-2.0
-
- Unless required by applicable law or agreed to in writing, software
- distributed under the License is distributed on an "AS IS" BASIS,
- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- See the License for the specific language governing permissions and
- limitations under the License.
- limitations under the License.
+ * Licensed to the Apache Software Foundation (ASF) under one or more contributor license
+ * agreements. See the NOTICE file distributed with this work for additional information regarding
+ * copyright ownership. The ASF licenses this file to You under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance with the License. You may obtain a
+ * copy of the License at
+ * 
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software distributed under the License
+ * is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+ * or implied. See the License for the specific language governing permissions and limitations under
+ * the License. limitations under the License.
  */
 
 package com.thilinamb.flume.sink;
@@ -21,8 +18,10 @@ package com.thilinamb.flume.sink;
 import kafka.javaapi.producer.Producer;
 import kafka.producer.KeyedMessage;
 import kafka.producer.ProducerConfig;
+
 import org.apache.flume.*;
 import org.apache.flume.conf.Configurable;
+import org.apache.flume.instrumentation.SinkCounter;
 import org.apache.flume.sink.AbstractSink;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,24 +30,23 @@ import java.util.Map;
 import java.util.Properties;
 
 /**
- * A Flume Sink that can publish messages to Kafka.
- * This is a general implementation that can be used with any Flume agent and a channel.
- * This supports key and messages of type String.
- * Extension points are provided to for users to implement custom key and topic extraction
- * logic based on the message content as well as the Flume context.
- * Without implementing this extension point(MessagePreprocessor), it's possible to publish
- * messages based on a static topic. In this case messages will be published to a random
- * partition.
+ * A Flume Sink that can publish messages to Kafka. This is a general implementation that can be
+ * used with any Flume agent and a channel. This supports key and messages of type String. Extension
+ * points are provided to for users to implement custom key and topic extraction logic based on the
+ * message content as well as the Flume context. Without implementing this extension
+ * point(MessagePreprocessor), it's possible to publish messages based on a static topic. In this
+ * case messages will be published to a random partition.
  */
 public class KafkaSink extends AbstractSink implements Configurable {
 
-    private static final Logger logger = LoggerFactory.getLogger(KafkaSink.class);
-    private Properties producerProps;
+    private static final Logger      logger      = LoggerFactory.getLogger(KafkaSink.class);
+    private Properties               producerProps;
     private Producer<String, String> producer;
-    private MessagePreprocessor messagePreProcessor;
-    private String topic;
-    private Context context;
-    private long maxBodySize = 2000000;
+    private MessagePreprocessor      messagePreProcessor;
+    private String                   topic;
+    private Context                  context;
+    private long                     maxBodySize = 2000000;
+    private SinkCounter              sinkCounter;
 
     @Override
     public Status process() throws EventDeliveryException {
@@ -76,15 +74,16 @@ public class KafkaSink extends AbstractSink implements Configurable {
                 if (logger.isDebugEnabled()) {
                     logger.debug("{Event} " + eventBody);
                 }
-                
-                if(eventBody.length() > maxBodySize){
+
+                if (eventBody.length() > maxBodySize) {
                     logger.error("Big Data Error: {Event} " + eventBody);
-                }else{
+                    sinkCounter.incrementConnectionFailedCount();
+                } else {
                     // create a message
-                    KeyedMessage<String, String> data = new KeyedMessage<String, String>(eventTopic, eventKey,
-                            eventBody);
+                    KeyedMessage<String, String> data = new KeyedMessage<String, String>(eventTopic, eventKey, eventBody);
                     // publish
-                    producer.send(data);                    
+                    producer.send(data);
+                    sinkCounter.incrementEventDrainSuccessCount();
                 }
             } else {
                 // No event found, request back-off semantics from the sink runner
@@ -112,12 +111,16 @@ public class KafkaSink extends AbstractSink implements Configurable {
         ProducerConfig config = new ProducerConfig(producerProps);
         producer = new Producer<String, String>(config);
         super.start();
+        sinkCounter.start();
+        sinkCounter.incrementConnectionCreatedCount();
     }
 
     @Override
     public synchronized void stop() {
         producer.close();
         super.stop();
+        sinkCounter.incrementConnectionClosedCount();
+        sinkCounter.stop();
     }
 
 
@@ -125,9 +128,11 @@ public class KafkaSink extends AbstractSink implements Configurable {
     public void configure(Context context) {
         this.context = context;
         // read the properties for Kafka Producer
-        // any property that has the prefix "kafka" in the key will be considered as a property that is passed when
+        // any property that has the prefix "kafka" in the key will be considered as a property that
+        // is passed when
         // instantiating the producer.
-        // For example, kafka.metadata.broker.list = localhost:9092 is a property that is processed here, but not
+        // For example, kafka.metadata.broker.list = localhost:9092 is a property that is processed
+        // here, but not
         // sinks.k1.type = com.thilinamb.flume.sink.KafkaSink.
         Map<String, String> params = context.getParameters();
         producerProps = new Properties();
@@ -143,7 +148,7 @@ public class KafkaSink extends AbstractSink implements Configurable {
                 }
             }
         }
-        maxBodySize = context.getLong("maxbodysize",2000000L);
+        maxBodySize = context.getLong("maxbodysize", 2000000L);
         // get the message Preprocessor if set
         String preprocessorClassName = context.getString(Constants.PREPROCESSOR);
         // if it's set create an instance using Java Reflection.
@@ -154,8 +159,7 @@ public class KafkaSink extends AbstractSink implements Configurable {
                 if (preprocessorObj instanceof MessagePreprocessor) {
                     messagePreProcessor = (MessagePreprocessor) preprocessorObj;
                 } else {
-                    String errorMsg = "Provided class for MessagePreprocessor does not implement " +
-                            "'com.thilinamb.flume.sink.MessagePreprocessor'";
+                    String errorMsg = "Provided class for MessagePreprocessor does not implement " + "'com.thilinamb.flume.sink.MessagePreprocessor'";
                     logger.error(errorMsg);
                     throw new IllegalArgumentException(errorMsg);
                 }
@@ -178,11 +182,11 @@ public class KafkaSink extends AbstractSink implements Configurable {
             // MessagePreprocessor is not set. So read the topic from the config.
             topic = context.getString(Constants.TOPIC, Constants.DEFAULT_TOPIC);
             if (topic.equals(Constants.DEFAULT_TOPIC)) {
-                logger.warn("The Properties 'metadata.extractor' or 'topic' is not set. Using the default topic name" +
-                        Constants.DEFAULT_TOPIC);
+                logger.warn("The Properties 'metadata.extractor' or 'topic' is not set. Using the default topic name" + Constants.DEFAULT_TOPIC);
             } else {
                 logger.info("Using the static topic: " + topic);
             }
         }
+        this.sinkCounter = new SinkCounter(this.getName());
     }
 }
