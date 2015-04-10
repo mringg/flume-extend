@@ -47,6 +47,8 @@ public class SplitEventSerializer extends BaseEventSerializer {
         Preconditions.checkNotNull(events);
         Preconditions.checkNotNull(connection);
         Preconditions.checkNotNull(this.upsertStatement);
+        
+        reconnect();
 
         PreparedStatement colUpsert = connection.prepareStatement(upsertStatement);
         boolean wasAutoCommit = connection.getAutoCommit();
