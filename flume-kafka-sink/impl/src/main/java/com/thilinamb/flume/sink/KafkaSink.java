@@ -62,28 +62,28 @@ public class KafkaSink extends AbstractSink implements Configurable {
             event = channel.take();
 
             if (event != null) {
-                // get the message body.
-                String eventBody = new String(event.getBody());
-                // if the metadata extractor is set, extract the topic and the key.
-                if (messagePreProcessor != null) {
-                    eventBody = messagePreProcessor.transformMessage(event, context);
-                    eventTopic = messagePreProcessor.extractTopic(event, context);
-                    eventKey = messagePreProcessor.extractKey(event, context);
-                }
-                // log the event for debugging
-                if (logger.isDebugEnabled()) {
-                    logger.debug("{Event} " + eventBody);
-                }
-
-                if (eventBody.length() > maxBodySize) {
-                    logger.error("Big Data Error: {Event} " + eventBody);
+                if (event.getBody().length > maxBodySize) {
+                    logger.error("Big Data Error");
                     sinkCounter.incrementConnectionFailedCount();
                 } else {
+                    // get the message body.
+                    String eventBody = new String(event.getBody());
+                    // if the metadata extractor is set, extract the topic and the key.
+                    if (messagePreProcessor != null) {
+                        eventBody = messagePreProcessor.transformMessage(event, context);
+                        eventTopic = messagePreProcessor.extractTopic(event, context);
+                        eventKey = messagePreProcessor.extractKey(event, context);
+                    }
+                    // log the event for debugging
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("{Event} " + eventBody);
+                    }
                     // create a message
                     KeyedMessage<String, String> data = new KeyedMessage<String, String>(eventTopic, eventKey, eventBody);
                     // publish
                     producer.send(data);
                     sinkCounter.incrementEventDrainSuccessCount();
+
                 }
             } else {
                 // No event found, request back-off semantics from the sink runner
@@ -91,7 +91,6 @@ public class KafkaSink extends AbstractSink implements Configurable {
             }
             // publishing is successful. Commit.
             transaction.commit();
-
         } catch (Exception ex) {
             transaction.rollback();
             String errorMsg = "Failed to publish event: " + event;
